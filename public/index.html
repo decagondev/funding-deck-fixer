@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Funding Deck Fixer</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  <style>
+    .hidden {
+      display: none;
+    }
+    .loader {
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #3498db;
+      border-radius: 50%;
+      width: 30px;
+      height: 30px;
+      animation: spin 2s linear infinite;
+      margin: 20px auto;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <div class="container mx-auto px-4 py-8">
+    <header class="text-center mb-8">
+      <h1 class="text-3xl font-bold text-indigo-700 mb-2">Funding Deck Fixer</h1>
+      <p class="text-gray-600">Analyze and improve your startup pitch deck</p>
+      <div class="mt-2">
+        <a href="/api-docs" target="_blank" class="text-sm text-indigo-600 hover:text-indigo-800">
+          <i class="fas fa-file-code"></i> API Documentation
+        </a>
+      </div>
+    </header>
+
+    <div class="bg-white rounded-lg shadow-lg p-6 mb-8">
+      <h2 class="text-xl font-semibold mb-4">Enter Your Pitch Deck Content</h2>
+      <p class="text-gray-600 mb-4">Paste the content of your slides below (each slide separated by a blank line)</p>
+      
+      <form id="deckForm">
+        <textarea 
+          id="deckContent" 
+          class="w-full h-64 px-3 py-2 text-gray-700 border rounded-lg focus:outline-none focus:border-indigo-500" 
+          placeholder="Paste your pitch deck content here..."></textarea>
+        
+        <div class="mt-4 text-right">
+          <button 
+            type="submit" 
+            class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-6 rounded-lg focus:outline-none focus:shadow-outline">
+            Analyze Deck
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <div id="loadingIndicator" class="hidden text-center py-8">
+      <div class="loader"></div>
+      <p class="text-gray-600 mt-4">Analyzing your pitch deck...</p>
+    </div>
+
+    <div id="resultsContainer" class="hidden">
+      <div class="bg-white rounded-lg shadow-lg p-6 mb-8">
+        <h2 class="text-xl font-semibold mb-6">Overall Evaluation</h2>
+        
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div class="bg-blue-50 p-4 rounded-lg text-center">
+            <h3 class="text-sm uppercase text-blue-800 font-medium">Clarity Score</h3>
+            <p id="clarityScore" class="text-4xl font-bold text-blue-600">0</p>
+          </div>
+          
+          <div class="bg-green-50 p-4 rounded-lg text-center">
+            <h3 class="text-sm uppercase text-green-800 font-medium">Investor Appeal</h3>
+            <p id="investorScore" class="text-4xl font-bold text-green-600">0</p>
+          </div>
+          
+          <div class="bg-indigo-50 p-4 rounded-lg text-center">
+            <h3 class="text-sm uppercase text-indigo-800 font-medium">Overall Score</h3>
+            <p id="overallScore" class="text-4xl font-bold text-indigo-600">0</p>
+          </div>
+        </div>
+        
+        <div class="mb-6">
+          <h3 class="font-medium text-lg mb-2">Top Recommendations</h3>
+          <ul id="topRecommendations" class="list-disc list-inside text-gray-700"></ul>
+        </div>
+        
+        <div id="missingElements" class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6 hidden">
+          <h3 class="font-medium text-lg text-yellow-800 mb-2">Missing Elements</h3>
+          <p class="text-gray-700 mb-2">Your pitch deck is missing these important sections:</p>
+          <ul id="missingSlidesList" class="list-disc list-inside text-yellow-700"></ul>
+        </div>
+      </div>
+      
+      <h2 class="text-xl font-semibold mb-4">Slide-by-Slide Feedback</h2>
+      <div id="slideFeedback" class="space-y-6"></div>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const deckForm = document.getElementById('deckForm');
+      const deckContent = document.getElementById('deckContent');
+      const loadingIndicator = document.getElementById('loadingIndicator');
+      const resultsContainer = document.getElementById('resultsContainer');
+      const slideFeedback = document.getElementById('slideFeedback');
+      
+      deckForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        if (!deckContent.value.trim()) {
+          alert('Please enter your pitch deck content');
+          return;
+        }
+        
+        // Show loading indicator
+        loadingIndicator.classList.remove('hidden');
+        resultsContainer.classList.add('hidden');
+        
+        try {
+          const response = await fetch('/api/analyze', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ deckContent: deckContent.value }),
+          });
+          
+          if (!response.ok) {
+            throw new Error('Failed to analyze deck');
+          }
+          
+          const data = await response.json();
+          
+          if (data.success && data.feedback) {
+            displayResults(data.feedback);
+          } else {
+            throw new Error('Invalid response format');
+          }
+        } catch (error) {
+          console.error('Error:', error);
+          alert('An error occurred while analyzing your deck: ' + error.message);
+        } finally {
+          loadingIndicator.classList.add('hidden');
+        }
+      });
+      
+      // Determine slide type from content
+      function determineSlideType(content) {
+        content = content.toLowerCase();
+        
+        if (content.includes('problem') || content.includes('challenge') || content.includes('pain')) {
+          return 'problem';
+        } else if (content.includes('solution') || content.includes('product')) {
+          return 'solution';
+        } else if (content.includes('market') || content.includes('tam') || content.includes('opportunity')) {
+          return 'market';
+        } else if (content.includes('team') || content.includes('founder')) {
+          return 'team';
+        } else if (content.includes('traction') || content.includes('metrics') || content.includes('growth')) {
+          return 'traction';
+        } else if (content.includes('competition') || content.includes('competitor')) {
+          return 'competition';
+        } else if (content.includes('business model') || content.includes('revenue')) {
+          return 'business_model';
+        } else if (content.includes('funding') || content.includes('investment') || content.includes('ask')) {
+          return 'ask';
+        }
+        
+        return 'general';
+      }
+      
+      // Display results function
+      function displayResults(data) {
+        // Update overall feedback
+        document.getElementById('clarityScore').textContent = data.overallFeedback.overallClarity;
+        document.getElementById('investorScore').textContent = data.overallFeedback.overallInvestorAppeal;
+        document.getElementById('overallScore').textContent = data.overallFeedback.overallScore;
+        
+        // Display top recommendations
+        const topRecommendationsEl = document.getElementById('topRecommendations');
+        topRecommendationsEl.innerHTML = '';
+        
+        data.overallFeedback.topRecommendations.forEach(rec => {
+          topRecommendationsEl.innerHTML += `<li>${rec}</li>`;
+        });
+        
+        // Display missing slide types if any
+        const missingElements = document.getElementById('missingElements');
+        const missingSlidesList = document.getElementById('missingSlidesList');
+        missingSlidesList.innerHTML = '';
+        
+        if (data.overallFeedback.missingSlideTypes.length > 0) {
+          data.overallFeedback.missingSlideTypes.forEach(type => {
+            missingSlidesList.innerHTML += `<li>${type}</li>`;
+          });
+          missingElements.classList.remove('hidden');
+        } else {
+          missingElements.classList.add('hidden');
+        }
+        
+        // Display individual slide feedback
+        slideFeedback.innerHTML = '';
+        
+        data.slideFeedback.forEach(slide => {
+          const slideHtml = createSlideFeedbackHTML(slide);
+          slideFeedback.innerHTML += slideHtml;
+        });
+        
+        // Show results container
+        resultsContainer.classList.remove('hidden');
+        
+        // Scroll to results
+        resultsContainer.scrollIntoView({ behavior: 'smooth' });
+      }
+      
+      // Create HTML for each slide feedback
+      function createSlideFeedbackHTML(slide) {
+        const slideTypeLabel = getSlideTypeLabel(slide.slideType);
+        
+        return `
+          <div class="bg-white rounded-lg shadow-lg overflow-hidden">
+            <div class="px-4 py-3 bg-indigo-100">
+              <div class="flex justify-between items-center">
+                <h3 class="font-medium">
+                  ${slide.slideTitle}
+                </h3>
+                <span class="text-xs inline-block px-2 py-1 rounded-full bg-indigo-200 text-indigo-800">
+                  ${slideTypeLabel}
+                </span>
+              </div>
+            </div>
+            
+            <div class="p-4">
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- Clarity Coach Feedback -->
+                <div class="border border-gray-200 rounded-lg p-4">
+                  <div class="flex items-center mb-3">
+                    <div class="h-8 w-8 rounded-full flex items-center justify-center bg-blue-100 text-blue-800">
+                      <i class="fas fa-check-circle"></i>
+                    </div>
+                    <h4 class="ml-2 text-lg font-medium">Clarity Coach</h4>
+                    <div class="ml-auto text-lg font-bold">
+                      ${slide.feedback.clarity.score}/10
+                    </div>
+                  </div>
+                  
+                  <p class="mb-2 text-gray-700">${slide.feedback.clarity.analysis}</p>
+                  
+                  <h5 class="font-medium mb-1 text-gray-800">Recommendations:</h5>
+                  <ul class="list-disc list-inside mb-3 text-sm text-gray-700">
+                    ${slide.feedback.clarity.recommendations.map(rec => `<li>${rec}</li>`).join('')}
+                  </ul>
+                </div>
+                
+                <!-- Investor Feedback -->
+                <div class="border border-gray-200 rounded-lg p-4">
+                  <div class="flex items-center mb-3">
+                    <div class="h-8 w-8 rounded-full flex items-center justify-center bg-green-100 text-green-800">
+                      <i class="fas fa-chart-line"></i>
+                    </div>
+                    <h4 class="ml-2 text-lg font-medium">Investor View</h4>
+                    <div class="ml-auto text-lg font-bold">
+                      ${slide.feedback.investor.score}/10
+                    </div>
+                  </div>
+                  
+                  <p class="mb-2 text-gray-700">${slide.feedback.investor.analysis}</p>
+                  
+                  <div class="space-y-2">
+                    <h5 class="font-medium text-gray-800">Red Flags:</h5>
+                    <ul class="list-disc list-inside text-sm text-red-600">
+                      ${slide.feedback.investor.redFlags.map(flag => `<li>${flag}</li>`).join('')}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Combined Recommendations -->
+              <div class="mt-4 bg-gray-50 p-4 rounded-lg">
+                <h4 class="font-medium mb-2">Recommended Improvements:</h4>
+                <div class="flex flex-wrap">
+                  ${slide.feedback.combinedRecommendations.map(rec => 
+                    `<span class="bg-indigo-100 text-indigo-800 text-sm rounded-full px-3 py-1 m-1">${rec}</span>`
+                  ).join('')}
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+      
+      // Helper function to get a user-friendly label for slide type
+      function getSlideTypeLabel(type) {
+        const labels = {
+          'problem': 'Problem Statement',
+          'solution': 'Solution',
+          'market': 'Market Opportunity',
+          'team': 'Team',
+          'traction': 'Traction & Metrics',
+          'competition': 'Competition',
+          'business_model': 'Business Model',
+          'ask': 'The Ask'
+        };
+        
+        return labels[type] || type;
+      }
+    });
+  </script>
+</body>
+</html>
